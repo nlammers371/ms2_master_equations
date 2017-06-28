@@ -3,15 +3,15 @@ addpath('./utilities');
 %--------------------Define Simulation Parameters-------------------------%
 %Set write paths
 
-subfolder = '3state_no_corr';
+subfolder = '2state_no_noise_section4_1';
 outpath = ['../figs/fano_figs/' subfolder];
 if exist([outpath]) ~= 7
     mkdir(outpath);
 end
 out_name = 'no_corr';
 %Specify # Data Points and T res to simulate
-T = 40*240;
-deltaT = 18.75;
+T = 40*60;
+deltaT = 10;
 seq_length = floor(T / deltaT);
 
 %Set elongation time and determine implied memory
@@ -20,7 +20,7 @@ w = round(t_elong / deltaT);
 %MS2 transcription time (t steps)
 alpha = 0;
 %Set num transcription states
-K = 3;
+K = 2;
 %Correlation Factor (beta>1: postive corr, <1, anti-corr)
 beta = 1;
 %Matrix to convert compound state to individual promoter states
@@ -31,32 +31,33 @@ elseif K == 3
 end
 %Emission Rates
 if K == 2
-    r_emission = [.001, 30];
+    r_emission = [.001, 60];
     %Initial State PDF
     pi0 = [0,1];
 elseif K == 3
-    r_emission = [.001, 30, 60];
+    r_emission = [.001, 60, 120];
     %Initial State PDF
     pi0 = [0,0,1];
 end
 %Noise due to background fluctuations
 noise = 0;
 %Calibration AU / mRNA
-fluo_per_rna = 50;
+fluo_per_rna = 300;
 %Obsolete Variable
 wait_time = 10;
 %Number of traces to generate
 n_traces = 500;
-%Poisson or Continuous Generator?
-Poisson = 1;
+% Param details in title
+param_details = 0;
+% Plot continuous
+plot_continuous = 0;
+% k_on_vec = .005:.05:.55;
+% k_off_vec = fliplr(.005:.05:.55);
 
-k_on_vec = .005:.045:.5;
-k_off_vec = fliplr(.005:.045:.5);
-
-% k_on_vec = [.008];
-% k_off_vec = fliplr([.014]);
+k_on_vec = [.016];
+k_off_vec = fliplr([.028]);
 % pool = parpool(4);
-for j = 1:length(k_off_vec)
+parfor j = 1:length(k_off_vec)
     %Define Rate matrix
     if K == 2
         R = [-k_on_vec(j), k_off_vec(j); 
@@ -97,18 +98,33 @@ for j = 1:length(k_off_vec)
         k_off = R(1,2);
     end
     
-    var_prediction = factor*((2*(avg_rate^2)*k_on*k_off)/(k_on+k_off)^3 + ...
+    var_predicted_p = factor*((2*(avg_rate^2)*k_on*k_off)/(k_on+k_off)^3 + ...
         (k_on*avg_rate)/(k_on+k_off))*time_vec;
     
-    var_vec = var(cm_trace_mat'/(fluo_per_rna*w))' ;
-    var_vec_cont = var(cm_trace_mat_cont'/(fluo_per_rna*w))' ;
-    plot(var_vec, 'Color', cm(5,:),'LineWidth',1.5);
-    plot(var_vec_cont, 'Color', cm(40,:),'LineWidth',1.5);
-    plot(var_prediction,'LineStyle','--','Color', cm(55,:),'LineWidth',1.5);
-    legend('Poisson','Continuous', 'Prediction','Location','southeast')
-    title(strvcat('                     Variance: Predicted vs. Actual',...
-        ['k_{on}:' num2str(k_on) '| k_{off}:' num2str(k_off), '| r:' num2str(r_emission(2)) 'AU | FluoPerRNA:' num2str(fluo_per_rna) ' | NTraces:' ...
-        num2str(n_traces) ' | Noise:' num2str(noise) 'AU']), 'fontsize',10);
+    var_predicted_c = factor*((2*(avg_rate^2)*k_on*k_off)/(k_on+k_off)^3  ...
+        )*time_vec;
+    
+    var_vec_p = var(cm_trace_mat'/(fluo_per_rna*w))' ;
+    var_vec_c = var(cm_trace_mat_cont'/(fluo_per_rna*w))' ;
+    
+    plot(var_vec_p, 'Color', cm(1,:),'LineWidth',1.5);
+    plot(var_predicted_p,'LineStyle','--','Color', cm(30,:),'LineWidth',1.5);
+    if plot_continuous
+        plot(var_vec_c, 'Color', cm(45,:),'LineWidth',1.5);
+        plot(var_predicted_c,'LineStyle','--','Color', cm(60,:),'LineWidth',1.5);
+        legend('Poisson', 'Poisson predicted', 'Continuous', ...
+            'Continuous predicted','Location','southeast')
+    else
+        legend('Simulated', 'Predicted','Location','southeast')
+    end
+    if param_details
+        title(strvcat('                        Variance: Predicted vs. Actual',...
+            ['k_{on}:' num2str(k_on) '| k_{off}:' num2str(k_off), '| r:' num2str(r_emission(2)) 'AU | FluoPerRNA:' num2str(fluo_per_rna) ' | NTraces:' ...
+            num2str(n_traces) ' | Noise:' num2str(noise) 'AU | dT:' num2str(deltaT)]), 'fontsize',10);
+    else
+        title('Variance: Predicted vs. Actual');
+    end
+    xlabel('seconds');
     saveas(var_fig, [outpath '/' 'var_fig_' num2str(j) out_name '.png'],'png');
     
     %%% Get Mean %%% 
@@ -117,33 +133,55 @@ for j = 1:length(k_off_vec)
     avg_rate = r_emission(2) / fluo_per_rna;
     time_vec = 1:seq_length;
     time_vec = time_vec.*deltaT;
-    mean_prediction = factor*avg_rate*(k_on/(k_on + k_off))*time_vec;
+    mean_predicted = factor*avg_rate*(k_on/(k_on + k_off))*time_vec;
 
     mean_vec = mean(cm_trace_mat,2) / w / fluo_per_rna;
     mean_vec_cont = mean(cm_trace_mat_cont,2) / w / fluo_per_rna; 
-    plot(mean_vec,'Color', cm(5,:),'LineWidth',1.5)
-    plot(mean_vec_cont,'Color', cm(40,:),'LineWidth',1.5)
-    plot(mean_prediction,'LineStyle','--','Color' ,cm(55,:),'LineWidth',1.5);
-    legend('Poisson','Continuous', 'Prediction','Location','southeast');
-     title(strvcat('                      Mean: Predicted vs. Actual',...
-        ['k_{on}:' num2str(k_on) '| k_{off}:' num2str(k_off), '| r:' num2str(r_emission(2)) 'AU | FluoPerRNA:' num2str(fluo_per_rna) ' | NTraces:' ...
-        num2str(n_traces) ' | Noise:' num2str(noise) 'AU']), 'fontsize',10);
+    plot(mean_vec,'Color', cm(1,:),'LineWidth',1.5)
+    plot(mean_predicted,'LineStyle','--','Color' ,cm(60,:),'LineWidth',1.5);
+    if plot_continuous
+        plot(mean_vec_cont,'Color', cm(45,:),'LineWidth',1.5)
+        legend('Poisson','Continuous', 'Predicted (Both)','Location','southeast');
+    else
+        legend('Simulated','Predicted','Location','southeast');
+    end
+    if param_details
+        title(strvcat('                         Mean: Predicted vs. Actual',...
+            ['k_{on}:' num2str(k_on) '| k_{off}:' num2str(k_off), '| r:' num2str(r_emission(2)) 'AU | FluoPerRNA:' num2str(fluo_per_rna) ' | NTraces:' ...
+            num2str(n_traces) ' | Noise:' num2str(noise) 'AU | dT:' num2str(deltaT)]), 'fontsize',10);
+    else
+        title('Mean: Predicted vs. Actual');
+    end
+    xlabel('seconds');
+    ylabel('AU');
     saveas(mean_fig, [outpath '/' 'mean_fig_' num2str(j) out_name '.png'],'png');
     
     %%% Get  Fano %%%
     fano_fig = figure('Visible','off');
     hold on
-    fano_prediction = var_prediction / mean_prediction;
-
-    fano_vec = var_vec ./ mean_vec;
-    fano_vec_cont = var_vec_cont ./ mean_vec_cont;
-    plot(fano_vec,'Color', cm(5,:),'LineWidth',1.5)
-    plot(fano_vec_cont,'LineStyle','--','Color', cm(40,:),'LineWidth',1.5)
-    plot(1:length(fano_vec),linspace(fano_prediction,fano_prediction,length(fano_vec)),'--','Color', cm(55,:),'LineWidth',1.5);
-    legend('Poisson','Continuous', 'Prediction','Location','southeast');
-     title(strvcat('                 Fano Factor: Predicted vs. Actual',...
-        ['k_{on}:' num2str(k_on) '| k_{off}:' num2str(k_off), '| r:' num2str(r_emission(2)) 'AU | FluoPerRNA:' num2str(fluo_per_rna) ' | NTraces:' ...
-        num2str(n_traces) ' | Noise:' num2str(noise) 'AU']), 'fontsize',10);
+    fano_predicted_p = var_predicted_p / mean_predicted;
+    fano_predicted_c = var_predicted_c / mean_predicted;
+    
+    fano_vec_p = var_vec_p ./ mean_vec;
+    fano_vec_c = var_vec_c ./ mean_vec_cont;
+    
+    plot(fano_vec_p,'Color', cm(1,:),'LineWidth',1.5)
+    plot(1:length(fano_vec_p),linspace(fano_predicted_p,fano_predicted_p,length(fano_vec_p)),'--','Color', cm(30,:),'LineWidth',1.5);
+    if plot_continuous
+        plot(fano_vec_c,'LineStyle','--','Color', cm(45,:),'LineWidth',1.5)
+        plot(1:length(fano_vec_c),linspace(fano_predicted_c,fano_predicted_c,length(fano_vec_c)),'--','Color', cm(60,:),'LineWidth',1.5);
+        legend('Poisson','Poisson Predicted', 'Continuous', 'Continuous predicted','Location','southeast');
+    else
+        legend('Simulated','Predicted','Location','southeast');
+    end
+    if param_details
+        title(strvcat('                     Fano Factor: Predicted vs. Actual',...
+            ['k_{on}:' num2str(k_on) '| k_{off}:' num2str(k_off), '| r:' num2str(r_emission(2)) 'AU | FluoPerRNA:' num2str(fluo_per_rna) ' | NTraces:' ...
+            num2str(n_traces) ' | Noise:' num2str(noise) 'AU | dT:' num2str(deltaT)]), 'fontsize',10);
+    else
+        title('Fano Factor: Predicte vs. Actual');
+    end
+    xlabel('seconds');
     saveas(fano_fig, [outpath '/' 'fano_fig_' num2str(j) out_name '.png'],'png');
 end
 
