@@ -4,14 +4,14 @@ addpath('./utilities');
 %Set write paths
 
 % subfolder = '3state_nn_cont_section5_1';
-subfolder = '3state_nn_section4_2';
+subfolder = '3state_nn_val';
 outpath = ['../figs/fano_figs/' subfolder];
 if exist([outpath]) ~= 7
     mkdir(outpath);
 end
 out_name = 'nn';
 %Specify # Data Points and T res to simulate
-T = 40*60;
+T = 80*60;
 deltaT = 10;
 seq_length = floor(T / deltaT);
 
@@ -40,8 +40,6 @@ elseif K == 3
     %Initial State PDF
     pi0 = [0,0,1];
 end
-%Noise due to background fluctuations
-noise = 0;
 %Calibration AU / mRNA
 fluo_per_rna = 300;
 %Obsolete Variable
@@ -52,11 +50,13 @@ n_traces = 500;
 param_details = 0;
 % Plot continuous
 plot_continuous = 0;
+% Plot nn case?
+plot_nn = 0;
 % k_on_vec = .005:.05:.55;
 % k_off_vec = fliplr(.005:.05:.55);
 
-k_on_vec = [.014];
-k_off_vec = fliplr([.028]);
+k_on_vec = [.008];
+k_off_vec = fliplr([.014]);
 % pool = parpool(4);
 for j = 1:length(k_off_vec)
     %Define Rate matrix
@@ -68,18 +68,24 @@ for j = 1:length(k_off_vec)
               2*k_on_vec(j), -beta*(k_off_vec(j)+k_on_vec(j)), 2*k_off_vec(j);
               0, beta*k_on_vec(j), -2*k_off_vec(j)];
     end
+    %Noise due to background fluctuations
+    noise = .1*w*r_emission(2)*deltaT*k_on_vec(j)/(k_on_vec(j)+k_off_vec(j));
     %-----------------------Run Simulation------------------------------------%
     trace_mat = zeros(seq_length,n_traces);
     cm_trace_mat = zeros(seq_length,n_traces);
+    cm_trace_mat_nn = zeros(seq_length,n_traces);
     cm_trace_mat_cont = zeros(seq_length,n_traces);
     %Iterate
+    on_steps = [];
     for i = 1:n_traces
         trace = synthetic_rate_gillespie_two(seq_length, alpha, ...
                                         K, w, R, deltaT, r_emission, noise, pi0, ...
                                         fluo_per_rna, wait_time, conv);
         trace_mat(:,i) = trace.fluo_MS2;
         cm_trace_mat(:,i) = cumsum(trace.fluo_MS2);
+        cm_trace_mat_nn(:,i) = cumsum(trace.fluo_MS2_no_noise);
         cm_trace_mat_cont(:,i) = cumsum(trace.fluo_MS2_orig_noise);
+        on_steps = [on_steps sum(trace.naive_states==2)];
     end
     colormap('winter');
     cm = colormap;
@@ -107,14 +113,22 @@ for j = 1:length(k_off_vec)
     
     var_vec_p = var(cm_trace_mat'/(fluo_per_rna*w))' ;
     var_vec_c = var(cm_trace_mat_cont'/(fluo_per_rna*w))' ;
+    var_vec_nn = var(cm_trace_mat_nn'/(fluo_per_rna*w))' ;
     
     plot(var_vec_p, 'Color', cm(1,:),'LineWidth',1.5);
     plot(var_predicted_p,'LineStyle','--','Color', cm(30,:),'LineWidth',1.5);
+    
     if plot_continuous
         plot(var_vec_c, 'Color', cm(45,:),'LineWidth',1.5);
         plot(var_predicted_c,'LineStyle','--','Color', cm(60,:),'LineWidth',1.5);
         legend('Poisson', 'Poisson predicted', 'Continuous', ...
             'Continuous predicted','Location','southeast')
+        
+    elseif plot_nn 
+        plot(var_vec_nn, 'Color', cm(45,:),'LineWidth',1.5);
+        legend('Simulated (Noise)', 'Predicted', 'Simulated (No Noise)', ...
+            'Location','southeast')
+    
     else
         legend('Simulated', 'Predicted','Location','southeast')
     end
@@ -195,7 +209,7 @@ for j = 1:length(k_off_vec)
         plot(mean_predicted,'LineStyle','--','Color', cm(45,:),'LineWidth',1.5);
         plot(mean_vec_c,'Color', cm(45,:),'LineWidth',1.5)
     end
-    title(['Mean: Predicted vs. Actual (' num2str(K) 'States)'], 'fontsize',14);
+    title(['Mean: Predicted vs. Actual (' num2str(K) ' States)'], 'fontsize',14);
     xlabel('Time Steps');
     
     subplot(1,3,2);

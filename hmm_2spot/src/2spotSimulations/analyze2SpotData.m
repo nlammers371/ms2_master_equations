@@ -1,0 +1,243 @@
+%Script to Simulate Process of analyzing 2 spot data
+%----------------------Specify Parameters and Load Data-------------------%
+
+%System Characteristics
+K = 2;
+w = 40;
+%Load "meta_trace_struct"
+subfolder = ['2SpotTraces_w' num2str(w) '_K' num2str(K)];
+outpath = ['../../out/2Spot/' subfolder];
+load([outpath '/trace_struct.mat']);
+%Set path fro results
+figpath = ['../../fig/2Spot/' subfolder];
+if exist(figpath) ~= 7
+    mkdir(figpath)
+end
+%Specify whether to use "realistic" traces or continuous approximation
+use_continuous =  0;
+
+%% -----Calculate Cumulative Fluorescence & Examine Noise ----------------%
+if use_continuous
+    simulation_set = meta_trace_struct(1).simulations;
+else
+    simulation_set = meta_trace_struct(end).simulations;
+end
+t_res = simulation_set(1).t_res;
+%set starting time step
+start = 1;
+%Account for jitter in trace start, end times
+for i = 1:length(simulation_set)
+    f = simulation_set(i).fluo_cont; 
+%     s_pt = find(f);
+    simulation_set(i).fluo_normed = [0 f(start:find(f,1,'last'))] ;%./ [1 1:w linspace(w,w,length(f(start:find(f,1,'last')))-w)];
+    simulation_set(i).cf_fluo_normed = cumsum(simulation_set(i).fluo_normed);
+    simulation_set(i).duration = length(simulation_set(i).fluo_normed);
+end
+%Determine maximum span of eligibillity for each nucleus given durations of
+%consituent traces
+nuc_index = [simulation_set.nucleus];
+nuc_set = unique(nuc_index);
+global_minimum = min([simulation_set.duration]);
+global_maximum = max([simulation_set.duration]);
+%Store Cumulative fluorecence for each pair for plotting
+scatter_pairs = zeros(length(nuc_set),2);
+i_vec = 1:global_maximum;
+for i = 1:length(nuc_set)
+    n_ids = find(nuc_index==i);
+    min_len = min([simulation_set(n_ids).duration]);
+    n_grp = 1;    
+    for j = n_ids
+        simulation_set(j).max_ind = min_len;        
+        cf = simulation_set(j).cf_fluo_normed;
+        cf = cf(i_vec <= min_len);                
+        scatter_pairs(i,n_grp) = simulation_set(j).cf_fluo_normed(global_minimum);
+        n_grp = n_grp + 1;
+    end
+end
+
+noise_fig = figure;
+colormap('winter')
+cm = colormap;
+hold on
+max_f = .9*nanmax(nanmax(scatter_pairs));
+min_f = .9*nanmin(nanmin(scatter_pairs));
+plot(linspace(min_f,max_f),linspace(min_f,max_f),'black')
+scatter(scatter_pairs(:,1),scatter_pairs(:,2), 15,'MarkerFaceColor', cm(30,:),...
+    'MarkerFaceAlpha',.4,'MarkerEdgeAlpha',0)
+grid on
+axis([min_f max_f min_f max_f])
+title('Examining Intrinsic and Extrinsic Variability in Cumualtive Fluorescence')
+xlabel('Locus 1 (AU)')
+ylabel('Locus 2 (AU)')
+grid on
+saveas(noise_fig, [figpath '/noise_scatter.png'],'png');
+
+% cum_fig = figure;
+% hold on 
+% for i = 1:nc_set
+%% -------------------Extract Intrinsic and Extrinsic Terms --------------%
+% fluo_per_mRNA = simulation_set(1).fluo_per_mRNA;
+A_array_cf = NaN(global_maximum,length(nuc_set));
+B_array_cf = NaN(global_maximum,length(nuc_set));
+
+A_array_ff = NaN(global_maximum,length(nuc_set));
+B_array_ff = NaN(global_maximum,length(nuc_set));
+
+for n = nuc_set;
+    ids = find(nuc_index==n);
+    mi = simulation_set(ids(1)).max_ind;
+    A_array_cf(1:mi,n) = simulation_set(ids(1)).cf_fluo_normed(1:mi);
+    B_array_cf(1:mi,n) = simulation_set(ids(2)).cf_fluo_normed(1:mi);
+    
+    A_array_ff(1:mi,n) = simulation_set(ids(1)).fluo_normed(1:mi);
+    B_array_ff(1:mi,n) = simulation_set(ids(2)).fluo_normed(1:mi);
+end
+adjust = [2:w linspace(w,w,global_maximum-w+1)];
+A_array_cf = A_array_cf ;% ./ repmat(adjust',1,size(A_array_cf,2));
+B_array_cf = B_array_cf ;%./ repmat(adjust',1,size(A_array_cf,2));
+A_array_ff = A_array_ff ;%./ repmat(adjust',1,size(A_array_cf,2));
+B_array_ff = B_array_ff ;%./ repmat(adjust',1,size(A_array_cf,2));
+
+mean_A_cf = nanmean(A_array_cf,2);
+mean_B_cf = nanmean(B_array_cf,2);
+mean_A_ff = nanmean(A_array_ff,2);
+mean_B_ff = nanmean(B_array_ff,2);
+
+diff_A_cf = A_array_cf - repmat(mean_A_cf,1,length(nuc_set));
+diff_B_cf = B_array_cf - repmat(mean_B_cf,1,length(nuc_set));
+diff_A_ff = A_array_ff - repmat(mean_A_ff,1,length(nuc_set));
+diff_B_ff = B_array_ff - repmat(mean_B_ff,1,length(nuc_set));
+
+
+%Calculate extrinsic noise
+% ext_vec = nanmean(diff_A_cf.*diff_B_cf,2);
+%As a check, calculate the total variance. Should equal e + i
+% var_vec = var([A_array_cf B_array_cf]')';
+
+%% --------------------Modeling Intrinsic Noise---------------------------%
+time_vec = (0:(size(B_array_ff,1)-1))*t_res;
+%Number of bootstrap samples
+n_boots = 1000;
+%Size of bootstrap
+boot_size = length(nuc_set);
+
+sample_index = 1:length(nuc_set);
+
+%Sim params
+avg_rate = simulation_set(1).r_true(2) ;
+
+if K == 2
+    factor = 1;
+else
+    factor = 2;
+end
+
+%arrays to store results
+fano_emp_cf_array = zeros(length(time_vec),n_boots);
+var_emp_cf_array = zeros(length(time_vec),n_boots);
+mean_emp_cf_array = zeros(length(time_vec),n_boots);
+
+fano_emp_ff_array = zeros(length(time_vec),n_boots);
+var_emp_ff_array = zeros(length(time_vec),n_boots);
+mean_emp_ff_array = zeros(length(time_vec),n_boots);
+
+for boot = 1:n_boots
+    boot_sample = randsample(sample_index,boot_size,true);
+    
+    %Calculate intrinsic noise;
+    int_vec_cf = .5*(nanmean((diff_A_cf(:,boot_sample)-diff_B_cf(:,boot_sample)).^2,2));
+    mean_vec_cf = nanmean([A_array_cf(:,boot_sample) B_array_cf(:,boot_sample)],2);
+    
+    int_vec_ff = .5*(nanmean((diff_A_ff(:,boot_sample)-diff_B_ff(:,boot_sample)).^2,2));
+    mean_vec_ff = nanmean([A_array_ff(:,boot_sample) B_array_ff(:,boot_sample)],2);
+    
+    fano_emp_cf_array(:,boot) = int_vec_cf ./ mean_vec_cf;
+    var_emp_cf_array(:,boot) = int_vec_cf;
+    mean_emp_cf_array(:,boot) = mean_vec_cf;
+    
+    fano_emp_ff_array(:,boot) = int_vec_ff ./ mean_vec_ff;
+    var_emp_ff_array(:,boot) = int_vec_ff;
+    mean_emp_ff_array(:,boot) = mean_vec_ff;
+end
+%% Define Functions
+var_cf_p = @(x) ((x(2)*x(4))/(x(2) + x(3)) + (2*x(3)*x(2)*x(4)^2)/(x(2)+x(3))^3)*x(1) ...
+    + (2*x(3)*(x(2) + 2*x(4)) + x(2)^2*(1-2*x(4)*x(1))...
+    + x(3)^2*(1+2*x(4)*x(1)))*exp(-(x(2)+x(3))*x(1))/(x(2) + x(3))^4 ...
+    -(x(2)^2 * x(4)^2 *exp(-2*(x(2) + x(3))*x(1)))/(x(2)+x(3))^4 ...
+    + (x(2)^2 * x(4)^2 - x(2)*(x(2)+x(3))^2*x(4) - 2*x(2)*x(3)*x(4)^2);
+
+mean_cf = @(x) (x(2)*x(4))/(x(2) + x(3)^2)*(-1 + (x(2)+x(3))*x(1) + exp(-(x(2)+x(3))*x(1)));
+    
+
+
+%%
+mean_fano_cf_emp = mean(fano_emp_cf_array,2);
+err_fano_cf_emp = std(fano_emp_cf_array')';
+
+mean_fano_ff_emp = mean(fano_emp_ff_array,2);
+err_fano_ff_emp = std(fano_emp_ff_array')';
+
+k_on = simulation_set(1).k_on_true;
+k_off = simulation_set(1).k_off_true;
+
+t_res = simulation_set(1).t_res;
+
+% Compare emprical Fano Factor to Steady State expectation
+%For pure poisson initiation
+
+var_predicted_p = zeros(1,length(time_vec));
+mean_predicted = zeros(1,length(time_vec));
+for t = 1:length(time_vec)
+    input = [time_vec(t),k_on,k_off,avg_rate];
+    var_predicted_p(t) = w*factor*var_cf_p(input);
+    mean_predicted(t) = factor*mean_cf(input);
+end
+fano_p = var_predicted_p ./ mean_predicted;      
+%For continuous initiation
+var_predicted_c = factor*((2*(avg_rate^2)*k_on*k_off)/(k_on+k_off)^3  ...
+        )*time_vec*w;
+fano_c = var_predicted_c ./ mean_predicted;
+
+%Compare empirical Fano to Steady State Expectation
+fano_fig = figure;
+hold on
+errorbar(time_vec,mean_fano_cf_emp,err_fano_cf_emp);
+plot(time_vec,mean_fano_cf_emp,'-','Color',cm(10,:));
+plot(time_vec,fano_p,'.-','Color',cm(30,:));
+% plot(time_vec,fano_c,'--','Color',cm(50,:));
+legend('Simulation', 'SS Prediction (Poisson)', 'SS Prediction (Continuous)','Location','southeast')
+title('Comparing Simulated Fano Factor with Steady State Predictions')
+grid on
+%%
+k_off_avg = (var_emp_cf_array*(k_on+k_off)^3) ./ (2*repmat(time_vec',1,n_boots) * avg_rate^2 * k_on);
+r_avg = (mean_emp_cf_array.*(k_on+k_off)) ./ (repmat(time_vec',1,n_boots) * k_on);
+rat =  (k_on*repmat(time_vec',1,n_boots) .* var_emp_cf_array) ./ ((mean_emp_cf_array.^2)*(1-k_on));
+%%
+d_F = mean_predicted ./ time_vec * t_res;
+d_var_p = var_predicted_p ./ time_vec  / w * t_res;
+d_var_c = var_predicted_c ./ time_vec / w * t_res;
+d_fano_p = d_var_p ./ d_F;
+d_fano_c = d_var_c ./ d_F;
+
+d_fano_fig = figure;
+hold on
+errorbar(time_vec,mean_fano_ff_emp,err_fano_ff_emp);
+plot(time_vec,mean_fano_ff_emp,'-','Color',cm(10,:));
+plot(time_vec,d_fano_p,'.-','Color',cm(30,:));
+% plot(time_vec(w:end),d_fano_c(w:end),'--','Color',cm(50,:));
+legend('Simulation', 'SS Prediction (Poisson)', 'SS Prediction (Continuous)','Location','southeast')
+title('Comparing Simulated Fano Factor with Steady State Predictions')
+grid on
+%%
+k_off_avg = (var_emp_cf_array*(k_on+k_off)^3) ./ (2*repmat(time_vec',1,n_boots) * avg_rate^2 * k_on);
+r_avg = (mean_emp_cf_array.*(k_on+k_off)) ./ (repmat(time_vec',1,n_boots) * k_on);
+rat =  (k_on*repmat(time_vec',1,n_boots) .* var_emp_cf_array) ./ ((mean_emp_cf_array.^2)*(1-k_on));
+
+
+%%
+t_ind = 1000;
+states = zeros(1,length(simulation_set));
+for i = 1:length(simulation_set)
+    t_index = find(simulation_set(i).naive_times >= t_ind,1);
+    states(i) = simulation_set(i).naive_states(t_index);
+end
