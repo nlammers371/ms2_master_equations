@@ -18,7 +18,7 @@ avg_seq_length = floor(t_obs / t_res);
 
 %Speficy degree of variabiltiy in trace start and stop times as a percent of t_obs
 %. If 0, start and stop times will be synchronous across all traces
-ss_var = .1;
+% ss_var = .1;
 %Specify Variability in initiation rates and transition rates. 
 %For now I vary only average rate from nucleus to nucleus. 
 %In future temporal fluctuations about spatial mean could be added
@@ -53,18 +53,18 @@ end
 %i.e. no correlation...). Only relevant for 3 state case
 beta = 1;
 %Number of active_promoters
-n_promoters = 2;
+% n_promoters = 2;
 %Elongation rates (bp/s)
-elongation_rates = [2*1000/60];
+% elongation_rates = [2*1000/60];
 %If 1, Pol II taken to initiate instantaneously once blocking distance is
 %cleared
-instant_fluo = 1;
+% instant_fluo = 1;
 %Blocking size of Pol II (bp)
-blocking_sizes = [150];
+% blocking_sizes = [150];
 
 %%%Other Params
 %Calibration AU / mRNA
-fluo_per_mRNA = 250;
+% fluo_per_mRNA = 250;
 %Can set multiple values here if you like
 k_on_vec = [.05];
 k_off_vec = [.5];
