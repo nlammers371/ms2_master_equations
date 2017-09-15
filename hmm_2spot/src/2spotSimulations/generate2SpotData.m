@@ -10,7 +10,7 @@ addpath('../utilities');
 
 %Specify # Nuclei, average length of observation (seconds) and Tres (seconds)
 n_nuclei = 1000;
-t_obs = 40*400;
+t_obs = 60*40;
 t_res = 20;
 avg_seq_length = floor(t_obs / t_res);
 
@@ -19,27 +19,27 @@ avg_seq_length = floor(t_obs / t_res);
 %Speficy degree of variabiltiy in trace start and stop times as a percent of t_obs
 %. If 0, start and stop times will be synchronous across all traces
 ss_var = .1;
-%Specify Variability in initiation rates and transition rates. For now I vary only average rate
-%from nucleus to nucleus. In future temporal fluctuations about spatial
-%mean could be added
+%Specify Variability in initiation rates and transition rates. 
+%For now I vary only average rate from nucleus to nucleus. 
+%In future temporal fluctuations about spatial mean could be added
 r_var = .1;
 k_off_var = .1;
 k_on_var = .1;
 
-
 %%%Intrinsic Params
 
-%Set elongation time and determine implied memory (note: memory needs to be
+%Set elongation time and determine implied dwell time (note: memory needs to be
 %integer for trace generation. t_res and t_elong should be adjusted accordingly)
 t_elong =180;
 w = round(t_elong / t_res);
-%MS2 transcription time (t steps)
+%MS2 transcription time in time steps. 
+%NL: I've been effectively keep this at zero for the time being
 alpha = .001;
 %Set num transcription states
 K = 2;
 %Set noise term as a fraction of mean expression rate
 noise = .1;
-%Initiation Rates (in AU, rather than PolII units)
+%Initiation Rates (in AU/s, rather than PolII units)
 if K == 2
     r_initiation = [.001, 60];
     %Initial State PDF
@@ -49,7 +49,8 @@ elseif K == 3
     %Initial State PDF
     pi0 = [1,0,0];
 end
-%Degree of correlation between sister chromatids (peg to 1 for now)
+%Degree of correlation between sister chromatids (peg to 1 for now, 
+%i.e. no correlation...). Only relevant for 3 state case
 beta = 1;
 %Number of active_promoters
 n_promoters = 2;
@@ -64,11 +65,11 @@ blocking_sizes = [150];
 %%%Other Params
 %Calibration AU / mRNA
 fluo_per_mRNA = 250;
-%eve-like
+%Can set multiple values here if you like
 k_on_vec = [.05];
 k_off_vec = [.5];
 %test names
-names = {'test'};
+names = {'eve_test'};
 
 %Set write paths
 subfolder = ['2SpotTraces_w' num2str(w) '_K' num2str(K)];
@@ -78,6 +79,7 @@ if exist([outpath]) ~= 7
 end
 
 %----------------------Run Simulations------------------------------------%
+%Structure to compile outputs from each simulation
 meta_trace_struct = struct;
 for j = 1:length(k_off_vec)   
     sim_trace_struct = struct;
@@ -119,19 +121,9 @@ for j = 1:length(k_off_vec)
 
 %             trace_sim = trace.loading_scenarios(1);
 %             trace_orig = trace.loading_scenarios(end);
-            trace_orig = trace.fluo_MS2;
-            f_vec = zeros(1,length(t_vec));
-            f_vec_naive = zeros(1,length(t_vec));
-            f_vec_cont = zeros(1,length(t_vec));
-            step_diff = length(t_vec) - seq_length;
-            start_step = 1; %randsample(1:step_diff,1);
-%             f_vec(start_step:(start_step+seq_length-1)) = trace_sim.fluo;
-            f_vec_cont(start_step:(start_step+seq_length-1)) = trace_orig;
-%             f_vec_naive(start_step:(start_step+seq_length-1)) = trace.naive_states;
+            trace_orig = trace.fluo_MS2;seq_length;                        
             ind = (i-1)*2+n;
-            sim_trace_struct(ind).fluo = f_vec;
-            sim_trace_struct(ind).fluo_cont = f_vec_cont;
-            sim_trace_struct(ind).fluo_naive = f_vec_naive;
+            sim_trace_struct(ind).fluo = trace_orig;            
             sim_trace_struct(ind).naive_states = trace.naive_states;
             sim_trace_struct(ind).naive_times = trace.transition_times;
             sim_trace_struct(ind).time = t_vec;
@@ -153,8 +145,7 @@ for j = 1:length(k_off_vec)
             sim_trace_struct(ind).k_off_nuc = k_off_nuc;
             sim_trace_struct(ind).k_off_true = k_off_vec(j);
             sim_trace_struct(ind).k_off_var = k_off_vec(j)*k_off_var;
-            sim_trace_struct(ind).noise = nuc_noise;
-            
+            sim_trace_struct(ind).noise = nuc_noise;            
         end
     end
     meta_trace_struct(j).simulations = sim_trace_struct;

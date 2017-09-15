@@ -14,10 +14,9 @@ figpath = ['../../fig/2Spot/' subfolder];
 if exist(figpath) ~= 7
     mkdir(figpath)
 end
-%Specify whether to use "realistic" traces or continuous approximation
-use_continuous =  0;
-
 %% -----Calculate Cumulative Fluorescence & Examine Noise ----------------%
+%Always take continuous case for now...
+use_continuous =  0;
 if use_continuous
     simulation_set = meta_trace_struct(1).simulations;
 else
@@ -28,9 +27,8 @@ t_res = simulation_set(1).t_res;
 start = 1;
 %Account for jitter in trace start, end times
 for i = 1:length(simulation_set)
-    f = simulation_set(i).fluo_cont; 
-%     s_pt = find(f);
-    simulation_set(i).fluo_normed = [0 f(start:find(f,1,'last'))] ;%./ [1 1:w linspace(w,w,length(f(start:find(f,1,'last')))-w)];
+    f = simulation_set(i).fluo; 
+    simulation_set(i).fluo_normed = [0 f(start:find(f,1,'last'))] ;
     simulation_set(i).cf_fluo_normed = cumsum(simulation_set(i).fluo_normed);
     simulation_set(i).fluo_shuffled = randsample(simulation_set(i).fluo_normed,length(simulation_set(i).fluo_normed),false);
     simulation_set(i).cf_fluo_shuffled = cumsum(simulation_set(i).fluo_shuffled);
@@ -134,7 +132,7 @@ diff_B_ff_s = B_array_ff_s - repmat(mean_B_ff_s,1,length(nuc_set));
 %% --------------------Modeling Intrinsic Noise---------------------------%
 time_vec = (0:(size(B_array_ff_n,1)-1))*t_res;
 %Number of bootstrap samples
-n_boots = 50;
+n_boots = 100;
 %Size of bootstrap
 boot_size = length(nuc_set);
 
@@ -199,27 +197,23 @@ for boot = 1:n_boots
     var_emp_ff_array_s(:,boot) = int_vec_ff_s;
     mean_emp_ff_array_s(:,boot) = mean_vec_ff_s;
 end
-%% Define Functions
-var_cf_p = @(x) ((x(2)*x(4))/(x(2) + x(3)) + (2*x(3)*x(2)*x(4)^2)/(x(2)+x(3))^3)*x(1) ...
-    + (2*x(3)*(x(2) + 2*x(4)) + x(2)^2*(1-2*x(4)*x(1))...
-    + x(3)^2*(1+2*x(4)*x(1)))*exp(-(x(2)+x(3))*x(1))/(x(2) + x(3))^4 ...
-    -(x(2)^2 * x(4)^2 *exp(-2*(x(2) + x(3))*x(1)))/(x(2)+x(3))^4 ...
-    + (x(2)^2 * x(4)^2 - x(2)*(x(2)+x(3))^2*x(4) - 2*x(2)*x(3)*x(4)^2);
-
-mean_cf = @(x) (x(2)*x(4))/(x(2) + x(3)^2)*(-1 + (x(2)+x(3))*x(1) + exp(-(x(2)+x(3))*x(1)));
-    
-%%
+%% Define Full Functions (with transients) 
+%NL: This isn't done yet, but important to make sure we understand what's
+%going on a the start of these traces
+% var_cf_p = @(x) ((x(2)*x(4))/(x(2) + x(3)) + (2*x(3)*x(2)*x(4)^2)/(x(2)+x(3))^3)*x(1) ...
+%     + (2*x(3)*(x(2) + 2*x(4)) + x(2)^2*(1-2*x(4)*x(1))...
+%     + x(3)^2*(1+2*x(4)*x(1)))*exp(-(x(2)+x(3))*x(1))/(x(2) + x(3))^4 ...
+%     -(x(2)^2 * x(4)^2 *exp(-2*(x(2) + x(3))*x(1)))/(x(2)+x(3))^4 ...
+%     + (x(2)^2 * x(4)^2 - x(2)*(x(2)+x(3))^2*x(4) - 2*x(2)*x(3)*x(4)^2);
+% 
+% mean_cf = @(x) (x(2)*x(4))/(x(2) + x(3)^2)*(-1 + (x(2)+x(3))*x(1) + exp(-(x(2)+x(3))*x(1)));
+%     
+%% Compare Steady State Peredictions to simulations
 mean_fano_cf_n_emp = mean(fano_emp_cf_array_n,2);
 err_fano_cf_n_emp = std(fano_emp_cf_array_n')';
 
 mean_fano_ff_n_emp = mean(fano_emp_ff_array_n,2);
 err_fano_ff_n_emp = std(fano_emp_ff_array_n')';
-
-mean_fano_cf_s_emp = mean(fano_emp_cf_array_s,2);
-err_fano_cf_s_emp = std(fano_emp_cf_array_s')';
-
-mean_fano_ff_s_emp = mean(fano_emp_ff_array_s,2);
-err_fano_ff_s_emp = std(fano_emp_ff_array_s')';
 
 k_on = simulation_set(1).k_on_true;
 k_off = simulation_set(1).k_off_true;
@@ -228,58 +222,40 @@ t_res = simulation_set(1).t_res;
 
 %Compare emprical Fano Factor to Steady State expectation
 %For pure poisson initiation
-
-var_predicted_p = zeros(1,length(time_vec));
-mean_predicted = zeros(1,length(time_vec));
-for t = 1:length(time_vec)
-    input = [time_vec(t),k_on,k_off,avg_rate];
-    var_predicted_p(t) = factor*var_cf_p(input);
-    mean_predicted(t) = factor*mean_cf(input);
-end
-fano_p = var_predicted_p ./ mean_predicted;      
+% 
+% var_predicted_p = zeros(1,length(time_vec));
+% mean_predicted = zeros(1,length(time_vec));
+% for t = 1:length(time_vec)
+%     input = [time_vec(t),k_on,k_off,avg_rate];
+%     var_predicted_p(t) = factor*var_cf_p(input);
+%     mean_predicted(t) = factor*mean_cf(input);
+% end
+% fano_p = var_predicted_p ./ mean_predicted;      
 %For continuous initiation
+mean_predicted = avg_rate*k_on/(k_on + k_off)*time_vec*w;
 var_predicted_c = factor*((2*(avg_rate^2)*k_on*k_off)/(k_on+k_off)^3  ...
-        )*time_vec*w;
+        )*time_vec*w^2;
 fano_c = var_predicted_c ./ mean_predicted;
 
 %Compare empirical Fano to Steady State Expectation
 fano_fig = figure;
 hold on
 errorbar(time_vec,mean_fano_cf_n_emp,err_fano_cf_n_emp);
-% errorbar(mean_fano_ff_s_emp,err_fano_ff_s_emp);
-% plot(time_vec,mean_fano_cf_emp,'-','Color',cm(10,:));
-plot(time_vec,fano_p,'.-','Color',cm(30,:));
-% plot(time_vec,fano_c,'--','Color',cm(50,:));
-legend('Normal','Shuffled');
-% legend('Simulation', 'SS Prediction (Poisson)', 'SS Prediction (Continuous)','Location','southeast')
+plot(time_vec,fano_c,'.-','Color',cm(30,:));
+legend('Simualtion','Prediction','Location','southeast');
 title('Comparing Simulated Fano Factor with Steady State Predictions')
 grid on
 %%
 d_F = mean_predicted ./ time_vec * t_res;
-d_var_p = var_predicted_p ./ time_vec  / w * t_res;
-d_var_c = var_predicted_c ./ time_vec / w * t_res;
-d_fano_p = d_var_p ./ d_F;
+d_var_c = var_predicted_c / w ./ time_vec * t_res;
 d_fano_c = d_var_c ./ d_F;
 
 d_fano_fig = figure;
 hold on
 errorbar(time_vec,mean_fano_ff_n_emp,err_fano_ff_n_emp);
-plot(time_vec,mean_fano_ff_emp,'-','Color',cm(10,:));
-plot(time_vec,d_fano_p,'.-','Color',cm(30,:));
+plot(time_vec,mean_fano_ff_n_emp,'-','Color',cm(10,:));
+plot(time_vec,d_fano_c,'.-','Color',cm(30,:));
 % plot(time_vec(w:end),d_fano_c(w:end),'--','Color',cm(50,:));
-legend('Simulation', 'SS Prediction (Poisson)', 'SS Prediction (Continuous)','Location','southeast')
+legend('Simulation', 'SS Prediction (Continuous)','Location','northeast')
 title('Comparing Simulated Fano Factor with Steady State Predictions')
 grid on
-%%
-k_off_avg = (var_emp_cf_array_n*(k_on+k_off)^3) ./ (2*repmat(time_vec',1,n_boots) * avg_rate^2 * k_on);
-r_avg = (mean_emp_cf_array_n.*(k_on+k_off)) ./ (repmat(time_vec',1,n_boots) * k_on);
-rat =  (k_on*repmat(time_vec',1,n_boots) .* var_emp_cf_array_n) ./ ((mean_emp_cf_array_n.^2)*(1-k_on));
-
-
-%%
-t_ind = 1000;
-states = zeros(1,length(simulation_set));
-for i = 1:length(simulation_set)
-    t_index = find(simulation_set(i).naive_times >= t_ind,1);
-    states(i) = simulation_set(i).naive_states(t_index);
-end
