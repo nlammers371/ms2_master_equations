@@ -1,9 +1,10 @@
+
 %Script to Simulate Process of analyzing 2 spot data
 %----------------------Specify Parameters and Load Data-------------------%
 
 %System Characteristics
 K = 2;
-w = 40;
+w = 9;
 %Load "meta_trace_struct"
 subfolder = ['2SpotTraces_w' num2str(w) '_K' num2str(K)];
 outpath = ['../../out/2Spot/' subfolder];
@@ -31,7 +32,9 @@ for i = 1:length(simulation_set)
 %     s_pt = find(f);
     simulation_set(i).fluo_normed = [0 f(start:find(f,1,'last'))] ;%./ [1 1:w linspace(w,w,length(f(start:find(f,1,'last')))-w)];
     simulation_set(i).cf_fluo_normed = cumsum(simulation_set(i).fluo_normed);
-    simulation_set(i).duration = length(simulation_set(i).fluo_normed);
+    simulation_set(i).fluo_shuffled = randsample(simulation_set(i).fluo_normed,length(simulation_set(i).fluo_normed),false);
+    simulation_set(i).cf_fluo_shuffled = cumsum(simulation_set(i).fluo_shuffled);
+    simulation_set(i).duration = length(simulation_set(i).fluo_normed);    
 end
 %Determine maximum span of eligibillity for each nucleus given durations of
 %consituent traces
@@ -77,47 +80,61 @@ saveas(noise_fig, [figpath '/noise_scatter.png'],'png');
 % for i = 1:nc_set
 %% -------------------Extract Intrinsic and Extrinsic Terms --------------%
 % fluo_per_mRNA = simulation_set(1).fluo_per_mRNA;
-A_array_cf = NaN(global_maximum,length(nuc_set));
-B_array_cf = NaN(global_maximum,length(nuc_set));
+A_array_cf_n = NaN(global_maximum,length(nuc_set));
+B_array_cf_n = NaN(global_maximum,length(nuc_set));
 
-A_array_ff = NaN(global_maximum,length(nuc_set));
-B_array_ff = NaN(global_maximum,length(nuc_set));
+A_array_cf_s = NaN(global_maximum,length(nuc_set));
+B_array_cf_s = NaN(global_maximum,length(nuc_set));
 
-for n = nuc_set;
+A_array_ff_n = NaN(global_maximum,length(nuc_set));
+B_array_ff_n = NaN(global_maximum,length(nuc_set));
+
+A_array_ff_s = NaN(global_maximum,length(nuc_set));
+B_array_ff_s = NaN(global_maximum,length(nuc_set));
+
+for n = nuc_set
     ids = find(nuc_index==n);
     mi = simulation_set(ids(1)).max_ind;
-    A_array_cf(1:mi,n) = simulation_set(ids(1)).cf_fluo_normed(1:mi);
-    B_array_cf(1:mi,n) = simulation_set(ids(2)).cf_fluo_normed(1:mi);
+    A_array_cf_n(1:mi,n) = simulation_set(ids(1)).cf_fluo_normed(1:mi);
+    B_array_cf_n(1:mi,n) = simulation_set(ids(2)).cf_fluo_normed(1:mi);
+    A_array_cf_s(1:mi,n) = simulation_set(ids(1)).cf_fluo_shuffled(1:mi);
+    B_array_cf_s(1:mi,n) = simulation_set(ids(2)).cf_fluo_shuffled(1:mi);
     
-    A_array_ff(1:mi,n) = simulation_set(ids(1)).fluo_normed(1:mi);
-    B_array_ff(1:mi,n) = simulation_set(ids(2)).fluo_normed(1:mi);
+    A_array_ff_n(1:mi,n) = simulation_set(ids(1)).fluo_normed(1:mi);
+    B_array_ff_n(1:mi,n) = simulation_set(ids(2)).fluo_normed(1:mi);
+    A_array_ff_s(1:mi,n) = simulation_set(ids(1)).fluo_shuffled(1:mi);
+    B_array_ff_s(1:mi,n) = simulation_set(ids(2)).fluo_shuffled(1:mi);
 end
-adjust = [2:w linspace(w,w,global_maximum-w+1)];
-A_array_cf = A_array_cf ;% ./ repmat(adjust',1,size(A_array_cf,2));
-B_array_cf = B_array_cf ;%./ repmat(adjust',1,size(A_array_cf,2));
-A_array_ff = A_array_ff ;%./ repmat(adjust',1,size(A_array_cf,2));
-B_array_ff = B_array_ff ;%./ repmat(adjust',1,size(A_array_cf,2));
 
-mean_A_cf = nanmean(A_array_cf,2);
-mean_B_cf = nanmean(B_array_cf,2);
-mean_A_ff = nanmean(A_array_ff,2);
-mean_B_ff = nanmean(B_array_ff,2);
+% A_array_cf_n = A_array_cf_n ;% ./ repmat(adjust',1,size(A_array_cf,2));
+% B_array_cf_n = B_array_cf_n ;%./ repmat(adjust',1,size(A_array_cf,2));
+% A_array_ff_n = A_array_ff_n ;%./ repmat(adjust',1,size(A_array_cf,2));
+% B_array_ff_n = B_array_ff_n ;%./ repmat(adjust',1,size(A_array_cf,2));
 
-diff_A_cf = A_array_cf - repmat(mean_A_cf,1,length(nuc_set));
-diff_B_cf = B_array_cf - repmat(mean_B_cf,1,length(nuc_set));
-diff_A_ff = A_array_ff - repmat(mean_A_ff,1,length(nuc_set));
-diff_B_ff = B_array_ff - repmat(mean_B_ff,1,length(nuc_set));
+mean_A_cf_n = nanmean(A_array_cf_n,2);
+mean_B_cf_n = nanmean(B_array_cf_n,2);
+mean_A_ff_n = nanmean(A_array_ff_n,2);
+mean_B_ff_n = nanmean(B_array_ff_n,2);
 
+mean_A_cf_s = nanmean(A_array_cf_s,2);
+mean_B_cf_s = nanmean(B_array_cf_s,2);
+mean_A_ff_s = nanmean(A_array_ff_s,2);
+mean_B_ff_s = nanmean(B_array_ff_s,2);
 
-%Calculate extrinsic noise
-% ext_vec = nanmean(diff_A_cf.*diff_B_cf,2);
-%As a check, calculate the total variance. Should equal e + i
-% var_vec = var([A_array_cf B_array_cf]')';
+diff_A_cf_n = A_array_cf_n - repmat(mean_A_cf_n,1,length(nuc_set));
+diff_B_cf_n = B_array_cf_n - repmat(mean_B_cf_n,1,length(nuc_set));
+diff_A_ff_n = A_array_ff_n - repmat(mean_A_ff_n,1,length(nuc_set));
+diff_B_ff_n = B_array_ff_n - repmat(mean_B_ff_n,1,length(nuc_set));
+
+diff_A_cf_s = A_array_cf_s - repmat(mean_A_cf_s,1,length(nuc_set));
+diff_B_cf_s = B_array_cf_s - repmat(mean_B_cf_s,1,length(nuc_set));
+diff_A_ff_s = A_array_ff_s - repmat(mean_A_ff_s,1,length(nuc_set));
+diff_B_ff_s = B_array_ff_s - repmat(mean_B_ff_s,1,length(nuc_set));
 
 %% --------------------Modeling Intrinsic Noise---------------------------%
-time_vec = (0:(size(B_array_ff,1)-1))*t_res;
+time_vec = (0:(size(B_array_ff_n,1)-1))*t_res;
 %Number of bootstrap samples
-n_boots = 1000;
+n_boots = 50;
 %Size of bootstrap
 boot_size = length(nuc_set);
 
@@ -133,31 +150,54 @@ else
 end
 
 %arrays to store results
-fano_emp_cf_array = zeros(length(time_vec),n_boots);
-var_emp_cf_array = zeros(length(time_vec),n_boots);
-mean_emp_cf_array = zeros(length(time_vec),n_boots);
+fano_emp_cf_array_n = zeros(length(time_vec),n_boots);
+var_emp_cf_array_n = zeros(length(time_vec),n_boots);
+mean_emp_cf_array_n = zeros(length(time_vec),n_boots);
 
-fano_emp_ff_array = zeros(length(time_vec),n_boots);
-var_emp_ff_array = zeros(length(time_vec),n_boots);
-mean_emp_ff_array = zeros(length(time_vec),n_boots);
+fano_emp_ff_array_n = zeros(length(time_vec),n_boots);
+var_emp_ff_array_n = zeros(length(time_vec),n_boots);
+mean_emp_ff_array_n = zeros(length(time_vec),n_boots);
+
+fano_emp_cf_array_s = zeros(length(time_vec),n_boots);
+var_emp_cf_array_s = zeros(length(time_vec),n_boots);
+mean_emp_cf_array_s = zeros(length(time_vec),n_boots);
+
+fano_emp_ff_array_s = zeros(length(time_vec),n_boots);
+var_emp_ff_array_s = zeros(length(time_vec),n_boots);
+mean_emp_ff_array_s = zeros(length(time_vec),n_boots);
 
 for boot = 1:n_boots
     boot_sample = randsample(sample_index,boot_size,true);
     
     %Calculate intrinsic noise;
-    int_vec_cf = .5*(nanmean((diff_A_cf(:,boot_sample)-diff_B_cf(:,boot_sample)).^2,2));
-    mean_vec_cf = nanmean([A_array_cf(:,boot_sample) B_array_cf(:,boot_sample)],2);
+    int_vec_cf_n = .5*(nanmean((diff_A_cf_n(:,boot_sample)-diff_B_cf_n(:,boot_sample)).^2,2));
+    mean_vec_cf_n = nanmean([A_array_cf_n(:,boot_sample) B_array_cf_n(:,boot_sample)],2);
     
-    int_vec_ff = .5*(nanmean((diff_A_ff(:,boot_sample)-diff_B_ff(:,boot_sample)).^2,2));
-    mean_vec_ff = nanmean([A_array_ff(:,boot_sample) B_array_ff(:,boot_sample)],2);
+    var_vec_ff_n = mean(.5*((diff_A_ff_n(:,boot_sample).^2+diff_B_ff_n(:,boot_sample).^2)));
+    int_vec_ff_n = .5*(nanmean((diff_A_ff_n(:,boot_sample)-diff_B_ff_n(:,boot_sample)).^2,2));
+    mean_vec_ff_n = nanmean([A_array_ff_n(:,boot_sample) B_array_ff_n(:,boot_sample)],2);
     
-    fano_emp_cf_array(:,boot) = int_vec_cf ./ mean_vec_cf;
-    var_emp_cf_array(:,boot) = int_vec_cf;
-    mean_emp_cf_array(:,boot) = mean_vec_cf;
+    int_vec_cf_s = .5*(nanmean((diff_A_cf_s(:,boot_sample)-diff_B_cf_s(:,boot_sample)).^2,2));
+    mean_vec_cf_s = nanmean([A_array_cf_s(:,boot_sample) B_array_cf_s(:,boot_sample)],2);
     
-    fano_emp_ff_array(:,boot) = int_vec_ff ./ mean_vec_ff;
-    var_emp_ff_array(:,boot) = int_vec_ff;
-    mean_emp_ff_array(:,boot) = mean_vec_ff;
+    int_vec_ff_s = .5*(nanmean((diff_A_ff_s(:,boot_sample)-diff_B_ff_s(:,boot_sample)).^2,2));
+    mean_vec_ff_s = nanmean([A_array_ff_s(:,boot_sample) B_array_ff_s(:,boot_sample)],2);    
+    
+    fano_emp_cf_array_n(:,boot) = int_vec_cf_n ./ mean_vec_cf_n;
+    var_emp_cf_array_n(:,boot) = int_vec_cf_n;
+    mean_emp_cf_array_n(:,boot) = mean_vec_cf_n;
+    
+    fano_emp_ff_array_n(:,boot) = int_vec_ff_n ./ mean_vec_ff_n;
+    var_emp_ff_array_n(:,boot) = int_vec_ff_n;
+    mean_emp_ff_array_n(:,boot) = mean_vec_ff_n;
+    
+    fano_emp_cf_array_s(:,boot) = int_vec_cf_s ./ mean_vec_cf_s;
+    var_emp_cf_array_s(:,boot) = int_vec_cf_s;
+    mean_emp_cf_array_s(:,boot) = mean_vec_cf_s;
+    
+    fano_emp_ff_array_s(:,boot) = int_vec_ff_s ./ mean_vec_ff_s;
+    var_emp_ff_array_s(:,boot) = int_vec_ff_s;
+    mean_emp_ff_array_s(:,boot) = mean_vec_ff_s;
 end
 %% Define Functions
 var_cf_p = @(x) ((x(2)*x(4))/(x(2) + x(3)) + (2*x(3)*x(2)*x(4)^2)/(x(2)+x(3))^3)*x(1) ...
@@ -168,28 +208,32 @@ var_cf_p = @(x) ((x(2)*x(4))/(x(2) + x(3)) + (2*x(3)*x(2)*x(4)^2)/(x(2)+x(3))^3)
 
 mean_cf = @(x) (x(2)*x(4))/(x(2) + x(3)^2)*(-1 + (x(2)+x(3))*x(1) + exp(-(x(2)+x(3))*x(1)));
     
-
-
 %%
-mean_fano_cf_emp = mean(fano_emp_cf_array,2);
-err_fano_cf_emp = std(fano_emp_cf_array')';
+mean_fano_cf_n_emp = mean(fano_emp_cf_array_n,2);
+err_fano_cf_n_emp = std(fano_emp_cf_array_n')';
 
-mean_fano_ff_emp = mean(fano_emp_ff_array,2);
-err_fano_ff_emp = std(fano_emp_ff_array')';
+mean_fano_ff_n_emp = mean(fano_emp_ff_array_n,2);
+err_fano_ff_n_emp = std(fano_emp_ff_array_n')';
+
+mean_fano_cf_s_emp = mean(fano_emp_cf_array_s,2);
+err_fano_cf_s_emp = std(fano_emp_cf_array_s')';
+
+mean_fano_ff_s_emp = mean(fano_emp_ff_array_s,2);
+err_fano_ff_s_emp = std(fano_emp_ff_array_s')';
 
 k_on = simulation_set(1).k_on_true;
 k_off = simulation_set(1).k_off_true;
 
 t_res = simulation_set(1).t_res;
 
-% Compare emprical Fano Factor to Steady State expectation
+%Compare emprical Fano Factor to Steady State expectation
 %For pure poisson initiation
 
 var_predicted_p = zeros(1,length(time_vec));
 mean_predicted = zeros(1,length(time_vec));
 for t = 1:length(time_vec)
     input = [time_vec(t),k_on,k_off,avg_rate];
-    var_predicted_p(t) = w*factor*var_cf_p(input);
+    var_predicted_p(t) = factor*var_cf_p(input);
     mean_predicted(t) = factor*mean_cf(input);
 end
 fano_p = var_predicted_p ./ mean_predicted;      
@@ -201,17 +245,15 @@ fano_c = var_predicted_c ./ mean_predicted;
 %Compare empirical Fano to Steady State Expectation
 fano_fig = figure;
 hold on
-errorbar(time_vec,mean_fano_cf_emp,err_fano_cf_emp);
-plot(time_vec,mean_fano_cf_emp,'-','Color',cm(10,:));
+errorbar(time_vec,mean_fano_cf_n_emp,err_fano_cf_n_emp);
+% errorbar(mean_fano_ff_s_emp,err_fano_ff_s_emp);
+% plot(time_vec,mean_fano_cf_emp,'-','Color',cm(10,:));
 plot(time_vec,fano_p,'.-','Color',cm(30,:));
 % plot(time_vec,fano_c,'--','Color',cm(50,:));
-legend('Simulation', 'SS Prediction (Poisson)', 'SS Prediction (Continuous)','Location','southeast')
+legend('Normal','Shuffled');
+% legend('Simulation', 'SS Prediction (Poisson)', 'SS Prediction (Continuous)','Location','southeast')
 title('Comparing Simulated Fano Factor with Steady State Predictions')
 grid on
-%%
-k_off_avg = (var_emp_cf_array*(k_on+k_off)^3) ./ (2*repmat(time_vec',1,n_boots) * avg_rate^2 * k_on);
-r_avg = (mean_emp_cf_array.*(k_on+k_off)) ./ (repmat(time_vec',1,n_boots) * k_on);
-rat =  (k_on*repmat(time_vec',1,n_boots) .* var_emp_cf_array) ./ ((mean_emp_cf_array.^2)*(1-k_on));
 %%
 d_F = mean_predicted ./ time_vec * t_res;
 d_var_p = var_predicted_p ./ time_vec  / w * t_res;
@@ -221,7 +263,7 @@ d_fano_c = d_var_c ./ d_F;
 
 d_fano_fig = figure;
 hold on
-errorbar(time_vec,mean_fano_ff_emp,err_fano_ff_emp);
+errorbar(time_vec,mean_fano_ff_n_emp,err_fano_ff_n_emp);
 plot(time_vec,mean_fano_ff_emp,'-','Color',cm(10,:));
 plot(time_vec,d_fano_p,'.-','Color',cm(30,:));
 % plot(time_vec(w:end),d_fano_c(w:end),'--','Color',cm(50,:));
@@ -229,9 +271,9 @@ legend('Simulation', 'SS Prediction (Poisson)', 'SS Prediction (Continuous)','Lo
 title('Comparing Simulated Fano Factor with Steady State Predictions')
 grid on
 %%
-k_off_avg = (var_emp_cf_array*(k_on+k_off)^3) ./ (2*repmat(time_vec',1,n_boots) * avg_rate^2 * k_on);
-r_avg = (mean_emp_cf_array.*(k_on+k_off)) ./ (repmat(time_vec',1,n_boots) * k_on);
-rat =  (k_on*repmat(time_vec',1,n_boots) .* var_emp_cf_array) ./ ((mean_emp_cf_array.^2)*(1-k_on));
+k_off_avg = (var_emp_cf_array_n*(k_on+k_off)^3) ./ (2*repmat(time_vec',1,n_boots) * avg_rate^2 * k_on);
+r_avg = (mean_emp_cf_array_n.*(k_on+k_off)) ./ (repmat(time_vec',1,n_boots) * k_on);
+rat =  (k_on*repmat(time_vec',1,n_boots) .* var_emp_cf_array_n) ./ ((mean_emp_cf_array_n.^2)*(1-k_on));
 
 
 %%

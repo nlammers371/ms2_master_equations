@@ -10,7 +10,7 @@ addpath('../utilities');
 
 %Specify # Nuclei, average length of observation (seconds) and Tres (seconds)
 n_nuclei = 1000;
-t_obs = 40*60;
+t_obs = 40*400;
 t_res = 20;
 avg_seq_length = floor(t_obs / t_res);
 
